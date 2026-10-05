@@ -1,0 +1,1749 @@
+import javax.swing.*;
+import javax.swing.border.*;
+import javax.swing.table.*;
+import javax.swing.event.*;
+import java.awt.*;
+import java.awt.event.*;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
+import java.util.List;
+
+public class VehicleMaintenanceSystem extends JFrame {
+    // Color scheme
+    private final Color PRIMARY_COLOR = new Color(41, 128, 185);
+    private final Color SECONDARY_COLOR = new Color(52, 152, 219);
+    private final Color ACCENT_COLOR = new Color(231, 76, 60);
+    private final Color SUCCESS_COLOR = new Color(46, 204, 113);
+    private final Color WARNING_COLOR = new Color(241, 196, 15);
+    private final Color BACKGROUND_COLOR = new Color(236, 240, 241);
+    private final Color PANEL_BG = Color.WHITE;
+    
+    // Components
+    private JTabbedPane tabbedPane;
+    private DefaultTableModel vehicleTableModel, maintenanceTableModel, expenseTableModel;
+    private JTable vehicleTable, maintenanceTable, expenseTable;
+    private JTextArea dashboardText;
+    private JComboBox<String> filterComboBox;
+    private JTextField searchField;
+    
+    // Data storage
+    private List<Vehicle> vehicles = new ArrayList<>();
+    private List<MaintenanceRecord> maintenanceRecords = new ArrayList<>();
+    private List<Expense> expenses = new ArrayList<>();
+    
+    // Formatters
+    private DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+    
+    // Inner classes for data storage
+    class Vehicle {
+        public int id;
+        public String make;
+        public String model;
+        public int year;
+        public String licensePlate;
+        public String vin;
+        public int mileage;
+        public String status;
+        
+        public Vehicle(int id, String make, String model, int year, 
+                       String licensePlate, String vin, int mileage, String status) {
+            this.id = id;
+            this.make = make;
+            this.model = model;
+            this.year = year;
+            this.licensePlate = licensePlate;
+            this.vin = vin;
+            this.mileage = mileage;
+            this.status = status;
+        }
+    }
+    
+    class MaintenanceRecord {
+        public int id;
+        public String vehicle;
+        public String serviceType;
+        public LocalDate date;
+        public LocalDate nextDue;
+        public double cost;
+        public String status;
+        public String notes;
+        
+        public MaintenanceRecord(int id, String vehicle, String serviceType, 
+                                LocalDate date, LocalDate nextDue, 
+                                double cost, String status, String notes) {
+            this.id = id;
+            this.vehicle = vehicle;
+            this.serviceType = serviceType;
+            this.date = date;
+            this.nextDue = nextDue;
+            this.cost = cost;
+            this.status = status;
+            this.notes = notes;
+        }
+    }
+    
+    class Expense {
+        public int id;
+        public String vehicle;
+        public String category;
+        public LocalDate date;
+        public double amount;
+        public String description;
+        public String receipt;
+        
+        public Expense(int id, String vehicle, String category, 
+                       LocalDate date, double amount, 
+                       String description, String receipt) {
+            this.id = id;
+            this.vehicle = vehicle;
+            this.category = category;
+            this.date = date;
+            this.amount = amount;
+            this.description = description;
+            this.receipt = receipt;
+        }
+    }
+    
+    public VehicleMaintenanceSystem() {
+        initializeUI();
+        loadSampleData();
+        updateDashboard();
+    }
+    
+    private void initializeUI() {
+        setTitle("Advanced Vehicle Maintenance System");
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setLayout(new BorderLayout());
+        getContentPane().setBackground(BACKGROUND_COLOR);
+        
+        // Create header panel
+        JPanel headerPanel = createHeaderPanel();
+        add(headerPanel, BorderLayout.NORTH);
+        
+        // Create tabbed pane
+        tabbedPane = new JTabbedPane();
+        tabbedPane.setBackground(BACKGROUND_COLOR);
+        tabbedPane.setForeground(Color.DARK_GRAY);
+        
+        // Create tabs
+        tabbedPane.addTab("Dashboard", createDashboardPanel());
+        tabbedPane.addTab("Vehicles", createVehiclePanel());
+        tabbedPane.addTab("Maintenance", createMaintenancePanel());
+        tabbedPane.addTab("Expenses", createExpensePanel());
+        tabbedPane.addTab("Reports", createReportsPanel());
+        tabbedPane.addTab("Settings", createSettingsPanel());
+        
+        // Style the tabbed pane
+        tabbedPane.setUI(new javax.swing.plaf.basic.BasicTabbedPaneUI() {
+            @Override
+            protected void paintTabBorder(Graphics g, int tabPlacement, int tabIndex, 
+                                          int x, int y, int w, int h, boolean isSelected) {
+                g.setColor(PRIMARY_COLOR);
+                g.drawRect(x, y, w, h);
+            }
+            
+            @Override
+            protected void paintTabBackground(Graphics g, int tabPlacement, int tabIndex, 
+                                              int x, int y, int w, int h, boolean isSelected) {
+                if (isSelected) {
+                    g.setColor(PRIMARY_COLOR);
+                } else {
+                    g.setColor(SECONDARY_COLOR);
+                }
+                g.fillRect(x, y, w, h);
+            }
+            
+            @Override
+            protected void paintContentBorder(Graphics g, int tabPlacement, int selectedIndex) {
+                // Custom border for content area
+                g.setColor(PRIMARY_COLOR);
+                g.drawRect(0, 0, tabbedPane.getWidth() - 1, tabbedPane.getHeight() - 1);
+            }
+        });
+        
+        add(tabbedPane, BorderLayout.CENTER);
+        
+        // Create status bar
+        JPanel statusPanel = new JPanel(new BorderLayout());
+        statusPanel.setBackground(new Color(52, 73, 94));
+        statusPanel.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
+        
+        JLabel statusLabel = new JLabel("Ready | Total Vehicles: " + vehicles.size() + 
+                                       " | Total Maintenance Records: " + maintenanceRecords.size());
+        statusLabel.setForeground(Color.WHITE);
+        statusPanel.add(statusLabel, BorderLayout.WEST);
+        
+        JLabel dateLabel = new JLabel(LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd")));
+        dateLabel.setForeground(Color.WHITE);
+        statusPanel.add(dateLabel, BorderLayout.EAST);
+        
+        add(statusPanel, BorderLayout.SOUTH);
+        
+        setSize(1200, 700);
+        setLocationRelativeTo(null);
+        setVisible(true);
+    }
+    
+    private JPanel createHeaderPanel() {
+        JPanel headerPanel = new JPanel(new BorderLayout());
+        headerPanel.setBackground(PRIMARY_COLOR);
+        headerPanel.setBorder(BorderFactory.createEmptyBorder(10, 15, 10, 15));
+        
+        // Title
+        JLabel titleLabel = new JLabel("Vehicle Maintenance System");
+        titleLabel.setFont(new Font("Segoe UI", Font.BOLD, 24));
+        titleLabel.setForeground(Color.WHITE);
+        headerPanel.add(titleLabel, BorderLayout.WEST);
+        
+        // Search panel
+        JPanel searchPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0));
+        searchPanel.setOpaque(false);
+        
+        searchField = new JTextField(15);
+        searchField.setToolTipText("Search across all data...");
+        
+        JButton searchButton = new JButton("Search");
+        searchButton.setBackground(SECONDARY_COLOR);
+        searchButton.setForeground(Color.WHITE);
+        searchButton.setFocusPainted(false);
+        searchButton.addActionListener(e -> performSearch());
+        
+        filterComboBox = new JComboBox<>(new String[]{"All", "Vehicles", "Maintenance", "Expenses"});
+        filterComboBox.setBackground(Color.WHITE);
+        
+        searchPanel.add(new JLabel("Search:"));
+        searchPanel.add(searchField);
+        searchPanel.add(filterComboBox);
+        searchPanel.add(searchButton);
+        
+        headerPanel.add(searchPanel, BorderLayout.EAST);
+        
+        return headerPanel;
+    }
+    
+    private JPanel createDashboardPanel() {
+        JPanel dashboardPanel = new JPanel(new BorderLayout(10, 10));
+        dashboardPanel.setBackground(BACKGROUND_COLOR);
+        dashboardPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        
+        // Create stats panels
+        JPanel statsPanel = new JPanel(new GridLayout(2, 3, 10, 10));
+        statsPanel.setBackground(BACKGROUND_COLOR);
+        
+        // Stat 1: Total Vehicles
+        JPanel stat1 = createStatPanel("Total Vehicles", "5", "Cars", PRIMARY_COLOR);
+        statsPanel.add(stat1);
+        
+        // Stat 2: Pending Maintenance
+        JPanel stat2 = createStatPanel("Pending Maintenance", "3", "Wrench", WARNING_COLOR);
+        statsPanel.add(stat2);
+        
+        // Stat 3: Monthly Expenses
+        JPanel stat3 = createStatPanel("Monthly Expenses", "$1,250", "Money", ACCENT_COLOR);
+        statsPanel.add(stat3);
+        
+        // Stat 4: Fuel Efficiency
+        JPanel stat4 = createStatPanel("Avg. Fuel Efficiency", "28.5 MPG", "Fuel", SUCCESS_COLOR);
+        statsPanel.add(stat4);
+        
+        // Stat 5: Overdue Services
+        JPanel stat5 = createStatPanel("Overdue Services", "2", "Alert", new Color(230, 126, 34));
+        statsPanel.add(stat5);
+        
+        // Stat 6: Upcoming Services
+        JPanel stat6 = createStatPanel("Upcoming (7 days)", "4", "Calendar", new Color(155, 89, 182));
+        statsPanel.add(stat6);
+        
+        dashboardPanel.add(statsPanel, BorderLayout.NORTH);
+        
+        // Dashboard text area
+        dashboardText = new JTextArea();
+        dashboardText.setEditable(false);
+        dashboardText.setFont(new Font("Monospaced", Font.PLAIN, 12));
+        dashboardText.setBorder(BorderFactory.createTitledBorder("System Summary"));
+        
+        JScrollPane scrollPane = new JScrollPane(dashboardText);
+        scrollPane.setBorder(BorderFactory.createEmptyBorder(10, 0, 0, 0));
+        
+        dashboardPanel.add(scrollPane, BorderLayout.CENTER);
+        
+        // Quick action buttons
+        JPanel quickActionPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+        quickActionPanel.setBackground(BACKGROUND_COLOR);
+        
+        JButton addVehicleBtn = createStyledButton("Add New Vehicle", PRIMARY_COLOR);
+        addVehicleBtn.addActionListener(e -> showAddVehicleDialog());
+        
+        JButton scheduleMaintenanceBtn = createStyledButton("Schedule Maintenance", WARNING_COLOR);
+        scheduleMaintenanceBtn.addActionListener(e -> showScheduleMaintenanceDialog());
+        
+        JButton addExpenseBtn = createStyledButton("Add Expense", ACCENT_COLOR);
+        addExpenseBtn.addActionListener(e -> showAddExpenseDialog());
+        
+        JButton generateReportBtn = createStyledButton("Generate Report", SUCCESS_COLOR);
+        generateReportBtn.addActionListener(e -> generateReport());
+        
+        quickActionPanel.add(addVehicleBtn);
+        quickActionPanel.add(scheduleMaintenanceBtn);
+        quickActionPanel.add(addExpenseBtn);
+        quickActionPanel.add(generateReportBtn);
+        
+        dashboardPanel.add(quickActionPanel, BorderLayout.SOUTH);
+        
+        return dashboardPanel;
+    }
+    
+    private JPanel createStatPanel(String title, String value, String icon, Color color) {
+        JPanel statPanel = new JPanel(new BorderLayout(5, 5));
+        statPanel.setBackground(PANEL_BG);
+        statPanel.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(color, 2),
+            BorderFactory.createEmptyBorder(10, 10, 10, 10)
+        ));
+        
+        JLabel iconLabel = new JLabel(icon);
+        iconLabel.setFont(new Font("Segoe UI", Font.BOLD, 18));
+        
+        JLabel titleLabel = new JLabel(title);
+        titleLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        titleLabel.setForeground(Color.GRAY);
+        
+        JLabel valueLabel = new JLabel(value);
+        valueLabel.setFont(new Font("Segoe UI", Font.BOLD, 20));
+        valueLabel.setForeground(color);
+        
+        JPanel textPanel = new JPanel(new BorderLayout());
+        textPanel.setOpaque(false);
+        textPanel.add(titleLabel, BorderLayout.NORTH);
+        textPanel.add(valueLabel, BorderLayout.CENTER);
+        
+        statPanel.add(iconLabel, BorderLayout.WEST);
+        statPanel.add(textPanel, BorderLayout.CENTER);
+        
+        return statPanel;
+    }
+    
+    private JPanel createVehiclePanel() {
+        JPanel vehiclePanel = new JPanel(new BorderLayout(10, 10));
+        vehiclePanel.setBackground(BACKGROUND_COLOR);
+        vehiclePanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        
+        // Table setup
+        String[] columns = {"ID", "Make", "Model", "Year", "License Plate", "VIN", "Mileage", "Status"};
+        vehicleTableModel = new DefaultTableModel(columns, 0) {
+            @Override
+            public boolean isCellEditable(int row, int column) {
+                return false;
+            }
+        };
+        vehicleTable = new JTable(vehicleTableModel);
+        styleTable(vehicleTable);
+        
+        JScrollPane scrollPane = new JScrollPane(vehicleTable);
+        scrollPane.setBorder(BorderFactory.createTitledBorder("Vehicle List"));
+        
+        // Button panel
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+        buttonPanel.setBackground(BACKGROUND_COLOR);
+        
+        JButton addBtn = createStyledButton("Add Vehicle", PRIMARY_COLOR);
+        addBtn.addActionListener(e -> showAddVehicleDialog());
+        
+        JButton editBtn = createStyledButton("Edit Vehicle", SECONDARY_COLOR);
+        editBtn.addActionListener(e -> editVehicle());
+        
+        JButton deleteBtn = createStyledButton("Delete Vehicle", ACCENT_COLOR);
+        deleteBtn.addActionListener(e -> deleteVehicle());
+        
+        JButton viewDetailsBtn = createStyledButton("View Details", SUCCESS_COLOR);
+        viewDetailsBtn.addActionListener(e -> viewVehicleDetails());
+        
+        JButton refreshBtn = createStyledButton("Refresh", new Color(149, 165, 166));
+        refreshBtn.addActionListener(e -> refreshVehicleTable());
+        
+        buttonPanel.add(addBtn);
+        buttonPanel.add(editBtn);
+        buttonPanel.add(deleteBtn);
+        buttonPanel.add(viewDetailsBtn);
+        buttonPanel.add(refreshBtn);
+        
+        vehiclePanel.add(scrollPane, BorderLayout.CENTER);
+        vehiclePanel.add(buttonPanel, BorderLayout.SOUTH);
+        
+        return vehiclePanel;
+    }
+    
+    private JPanel createMaintenancePanel() {
+        JPanel maintenancePanel = new JPanel(new BorderLayout(10, 10));
+        maintenancePanel.setBackground(BACKGROUND_COLOR);
+        maintenancePanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        
+        // Table setup
+        String[] columns = {"ID", "Vehicle", "Service Type", "Date", "Next Due", "Cost", "Status", "Notes"};
+        maintenanceTableModel = new DefaultTableModel(columns, 0) {
+            @Override
+            public boolean isCellEditable(int row, int column) {
+                return false;
+            }
+        };
+        maintenanceTable = new JTable(maintenanceTableModel);
+        styleTable(maintenanceTable);
+        
+        JScrollPane scrollPane = new JScrollPane(maintenanceTable);
+        scrollPane.setBorder(BorderFactory.createTitledBorder("Maintenance Records"));
+        
+        // Button panel
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+        buttonPanel.setBackground(BACKGROUND_COLOR);
+        
+        JButton addBtn = createStyledButton("Add Record", PRIMARY_COLOR);
+        addBtn.addActionListener(e -> showAddMaintenanceDialog());
+        
+        JButton editBtn = createStyledButton("Edit Record", SECONDARY_COLOR);
+        editBtn.addActionListener(e -> editMaintenanceRecord());
+        
+        JButton deleteBtn = createStyledButton("Delete Record", ACCENT_COLOR);
+        deleteBtn.addActionListener(e -> deleteMaintenanceRecord());
+        
+        JButton markCompleteBtn = createStyledButton("Mark Complete", SUCCESS_COLOR);
+        markCompleteBtn.addActionListener(e -> markMaintenanceComplete());
+        
+        JButton scheduleBtn = createStyledButton("Schedule", WARNING_COLOR);
+        scheduleBtn.addActionListener(e -> showScheduleMaintenanceDialog());
+        
+        buttonPanel.add(addBtn);
+        buttonPanel.add(editBtn);
+        buttonPanel.add(deleteBtn);
+        buttonPanel.add(markCompleteBtn);
+        buttonPanel.add(scheduleBtn);
+        
+        maintenancePanel.add(scrollPane, BorderLayout.CENTER);
+        maintenancePanel.add(buttonPanel, BorderLayout.SOUTH);
+        
+        return maintenancePanel;
+    }
+    
+    private JPanel createExpensePanel() {
+        JPanel expensePanel = new JPanel(new BorderLayout(10, 10));
+        expensePanel.setBackground(BACKGROUND_COLOR);
+        expensePanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        
+        // Table setup
+        String[] columns = {"ID", "Vehicle", "Category", "Date", "Amount", "Description", "Receipt"};
+        expenseTableModel = new DefaultTableModel(columns, 0) {
+            @Override
+            public boolean isCellEditable(int row, int column) {
+                return false;
+            }
+        };
+        expenseTable = new JTable(expenseTableModel);
+        styleTable(expenseTable);
+        
+        JScrollPane scrollPane = new JScrollPane(expenseTable);
+        scrollPane.setBorder(BorderFactory.createTitledBorder("Expense Records"));
+        
+        // Button panel
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+        buttonPanel.setBackground(BACKGROUND_COLOR);
+        
+        JButton addBtn = createStyledButton("Add Expense", PRIMARY_COLOR);
+        addBtn.addActionListener(e -> showAddExpenseDialog());
+        
+        JButton editBtn = createStyledButton("Edit Expense", SECONDARY_COLOR);
+        editBtn.addActionListener(e -> editExpense());
+        
+        JButton deleteBtn = createStyledButton("Delete Expense", ACCENT_COLOR);
+        deleteBtn.addActionListener(e -> deleteExpense());
+        
+        JButton viewChartBtn = createStyledButton("View Chart", new Color(155, 89, 182));
+        viewChartBtn.addActionListener(e -> showExpenseChart());
+        
+        JButton exportBtn = createStyledButton("Export", new Color(149, 165, 166));
+        exportBtn.addActionListener(e -> exportExpenses());
+        
+        buttonPanel.add(addBtn);
+        buttonPanel.add(editBtn);
+        buttonPanel.add(deleteBtn);
+        buttonPanel.add(viewChartBtn);
+        buttonPanel.add(exportBtn);
+        
+        expensePanel.add(scrollPane, BorderLayout.CENTER);
+        expensePanel.add(buttonPanel, BorderLayout.SOUTH);
+        
+        return expensePanel;
+    }
+    
+    private JPanel createReportsPanel() {
+        JPanel reportsPanel = new JPanel(new BorderLayout(10, 10));
+        reportsPanel.setBackground(BACKGROUND_COLOR);
+        reportsPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        
+        // Report options
+        JPanel optionsPanel = new JPanel(new GridLayout(6, 1, 5, 5));
+        optionsPanel.setBackground(PANEL_BG);
+        optionsPanel.setBorder(BorderFactory.createTitledBorder("Report Options"));
+        
+        ButtonGroup reportGroup = new ButtonGroup();
+        JRadioButton maintenanceReportBtn = new JRadioButton("Maintenance History Report");
+        JRadioButton expenseReportBtn = new JRadioButton("Expense Analysis Report");
+        JRadioButton vehicleReportBtn = new JRadioButton("Vehicle Status Report");
+        JRadioButton fuelReportBtn = new JRadioButton("Fuel Efficiency Report");
+        JRadioButton upcomingServicesBtn = new JRadioButton("Upcoming Services Report");
+        JRadioButton customReportBtn = new JRadioButton("Custom Report");
+        
+        maintenanceReportBtn.setSelected(true);
+        
+        reportGroup.add(maintenanceReportBtn);
+        reportGroup.add(expenseReportBtn);
+        reportGroup.add(vehicleReportBtn);
+        reportGroup.add(fuelReportBtn);
+        reportGroup.add(upcomingServicesBtn);
+        reportGroup.add(customReportBtn);
+        
+        optionsPanel.add(maintenanceReportBtn);
+        optionsPanel.add(expenseReportBtn);
+        optionsPanel.add(vehicleReportBtn);
+        optionsPanel.add(fuelReportBtn);
+        optionsPanel.add(upcomingServicesBtn);
+        optionsPanel.add(customReportBtn);
+        
+        // Date range panel
+        JPanel datePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+        datePanel.setBackground(PANEL_BG);
+        datePanel.setBorder(BorderFactory.createTitledBorder("Date Range"));
+        
+        JLabel fromLabel = new JLabel("From:");
+        JTextField fromDate = new JTextField(LocalDate.now().minusMonths(1).toString(), 10);
+        JLabel toLabel = new JLabel("To:");
+        JTextField toDate = new JTextField(LocalDate.now().toString(), 10);
+        
+        datePanel.add(fromLabel);
+        datePanel.add(fromDate);
+        datePanel.add(toLabel);
+        datePanel.add(toDate);
+        
+        // Report display area
+        JTextArea reportArea = new JTextArea();
+        reportArea.setEditable(false);
+        reportArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
+        
+        JScrollPane reportScrollPane = new JScrollPane(reportArea);
+        reportScrollPane.setBorder(BorderFactory.createTitledBorder("Report Output"));
+        
+        // Generate button
+        JButton generateBtn = createStyledButton("Generate Report", PRIMARY_COLOR);
+        generateBtn.addActionListener(e -> {
+            String report = generateReportContent(
+                maintenanceReportBtn.isSelected() ? "maintenance" :
+                expenseReportBtn.isSelected() ? "expense" :
+                vehicleReportBtn.isSelected() ? "vehicle" :
+                fuelReportBtn.isSelected() ? "fuel" :
+                upcomingServicesBtn.isSelected() ? "upcoming" : "custom",
+                fromDate.getText(),
+                toDate.getText()
+            );
+            reportArea.setText(report);
+        });
+        
+        JPanel controlPanel = new JPanel(new BorderLayout(10, 10));
+        controlPanel.setBackground(BACKGROUND_COLOR);
+        controlPanel.add(optionsPanel, BorderLayout.NORTH);
+        controlPanel.add(datePanel, BorderLayout.CENTER);
+        controlPanel.add(generateBtn, BorderLayout.SOUTH);
+        
+        reportsPanel.add(controlPanel, BorderLayout.WEST);
+        reportsPanel.add(reportScrollPane, BorderLayout.CENTER);
+        
+        return reportsPanel;
+    }
+    
+    private JPanel createSettingsPanel() {
+        JPanel settingsPanel = new JPanel(new BorderLayout(10, 10));
+        settingsPanel.setBackground(BACKGROUND_COLOR);
+        settingsPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        
+        // Settings options
+        JPanel optionsPanel = new JPanel(new GridLayout(8, 1, 5, 10));
+        optionsPanel.setBackground(PANEL_BG);
+        optionsPanel.setBorder(BorderFactory.createTitledBorder("System Settings"));
+        
+        JCheckBox notificationsCheck = new JCheckBox("Enable Notifications", true);
+        JCheckBox autoBackupCheck = new JCheckBox("Enable Auto Backup", true);
+        JCheckBox darkModeCheck = new JCheckBox("Dark Mode", false);
+        
+        JLabel reminderLabel = new JLabel("Reminder Days Before Due:");
+        JSpinner reminderSpinner = new JSpinner(new SpinnerNumberModel(7, 1, 30, 1));
+        
+        JLabel currencyLabel = new JLabel("Currency:");
+        JComboBox<String> currencyCombo = new JComboBox<>(new String[]{"USD", "EUR", "GBP", "JPY", "CAD"});
+        
+        JLabel themeLabel = new JLabel("Theme Color:");
+        JComboBox<String> themeCombo = new JComboBox<>(new String[]{"Blue", "Green", "Red", "Purple", "Dark"});
+        
+        optionsPanel.add(notificationsCheck);
+        optionsPanel.add(autoBackupCheck);
+        optionsPanel.add(darkModeCheck);
+        optionsPanel.add(reminderLabel);
+        optionsPanel.add(reminderSpinner);
+        optionsPanel.add(currencyLabel);
+        optionsPanel.add(currencyCombo);
+        optionsPanel.add(themeLabel);
+        optionsPanel.add(themeCombo);
+        
+        // Save button
+        JButton saveBtn = createStyledButton("Save Settings", PRIMARY_COLOR);
+        saveBtn.addActionListener(e -> {
+            JOptionPane.showMessageDialog(this, "Settings saved successfully!");
+        });
+        
+        // Reset button
+        JButton resetBtn = createStyledButton("Reset to Defaults", new Color(149, 165, 166));
+        resetBtn.addActionListener(e -> {
+            notificationsCheck.setSelected(true);
+            autoBackupCheck.setSelected(true);
+            darkModeCheck.setSelected(false);
+            reminderSpinner.setValue(7);
+            currencyCombo.setSelectedItem("USD");
+            themeCombo.setSelectedItem("Blue");
+        });
+        
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 10));
+        buttonPanel.setBackground(BACKGROUND_COLOR);
+        buttonPanel.add(saveBtn);
+        buttonPanel.add(resetBtn);
+        
+        settingsPanel.add(optionsPanel, BorderLayout.CENTER);
+        settingsPanel.add(buttonPanel, BorderLayout.SOUTH);
+        
+        return settingsPanel;
+    }
+    
+    private JButton createStyledButton(String text, Color color) {
+        JButton button = new JButton(text);
+        button.setBackground(color);
+        button.setForeground(Color.WHITE);
+        button.setFocusPainted(false);
+        button.setBorder(BorderFactory.createEmptyBorder(8, 15, 8, 15));
+        button.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        
+        // Add hover effect
+        button.addMouseListener(new java.awt.event.MouseAdapter() {
+            public void mouseEntered(java.awt.event.MouseEvent evt) {
+                button.setBackground(color.darker());
+            }
+            public void mouseExited(java.awt.event.MouseEvent evt) {
+                button.setBackground(color);
+            }
+        });
+        
+        return button;
+    }
+    
+    private void styleTable(JTable table) {
+        table.setRowHeight(30);
+        table.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        table.getTableHeader().setFont(new Font("Segoe UI", Font.BOLD, 13));
+        table.getTableHeader().setBackground(PRIMARY_COLOR);
+        table.getTableHeader().setForeground(Color.WHITE);
+        table.setSelectionBackground(SECONDARY_COLOR);
+        table.setSelectionForeground(Color.WHITE);
+        table.setGridColor(new Color(220, 220, 220));
+        
+        // Alternating row colors
+        table.setDefaultRenderer(Object.class, new DefaultTableCellRenderer() {
+            @Override
+            public Component getTableCellRendererComponent(JTable table, Object value,
+                    boolean isSelected, boolean hasFocus, int row, int column) {
+                Component c = super.getTableCellRendererComponent(table, value, 
+                        isSelected, hasFocus, row, column);
+                
+                if (!isSelected) {
+                    if (row % 2 == 0) {
+                        c.setBackground(Color.WHITE);
+                    } else {
+                        c.setBackground(new Color(240, 248, 255));
+                    }
+                }
+                
+                // Highlight overdue maintenance
+                if (table == maintenanceTable && column == 6) {
+                    if ("Overdue".equals(value)) {
+                        c.setBackground(new Color(255, 230, 230));
+                        c.setForeground(ACCENT_COLOR);
+                    } else if ("Pending".equals(value)) {
+                        c.setBackground(new Color(255, 255, 230));
+                        c.setForeground(WARNING_COLOR);
+                    } else if ("Completed".equals(value)) {
+                        c.setBackground(new Color(230, 255, 230));
+                        c.setForeground(SUCCESS_COLOR);
+                    }
+                }
+                
+                return c;
+            }
+        });
+    }
+    
+    private void loadSampleData() {
+        // Sample vehicles
+        vehicles.add(new Vehicle(1, "Toyota", "Camry", 2020, "ABC123", "1HGBH41JXMN109186", 45000, "Active"));
+        vehicles.add(new Vehicle(2, "Honda", "Civic", 2019, "XYZ789", "JHMCM56557C402453", 38000, "Active"));
+        vehicles.add(new Vehicle(3, "Ford", "F-150", 2021, "DEF456", "1FTFW1ET5EFC12345", 22000, "Active"));
+        vehicles.add(new Vehicle(4, "Tesla", "Model 3", 2022, "TES001", "5YJ3E1EAXJF000123", 15000, "Active"));
+        vehicles.add(new Vehicle(5, "BMW", "X5", 2020, "BMW789", "5UXCR6C54KLL12345", 32000, "Inactive"));
+        
+        // Sample maintenance records
+        maintenanceRecords.add(new MaintenanceRecord(1, "Toyota Camry", "Oil Change", 
+                LocalDate.now().minusDays(15), LocalDate.now().plusDays(15), 75.50, "Completed", "Used synthetic oil"));
+        maintenanceRecords.add(new MaintenanceRecord(2, "Honda Civic", "Brake Pad Replacement", 
+                LocalDate.now().minusDays(30), LocalDate.now().plusDays(60), 250.00, "Pending", "Front brakes only"));
+        maintenanceRecords.add(new MaintenanceRecord(3, "Ford F-150", "Tire Rotation", 
+                LocalDate.now().minusDays(10), LocalDate.now().plusDays(80), 40.00, "Completed", "All four tires"));
+        maintenanceRecords.add(new MaintenanceRecord(4, "Tesla Model 3", "Battery Check", 
+                LocalDate.now().minusDays(5), LocalDate.now().plusDays(180), 0.00, "Scheduled", "Warranty service"));
+        maintenanceRecords.add(new MaintenanceRecord(5, "Toyota Camry", "Transmission Fluid", 
+                LocalDate.now().minusDays(90), LocalDate.now().minusDays(10), 120.00, "Overdue", "Needs immediate attention"));
+        
+        // Sample expenses
+        expenses.add(new Expense(1, "Toyota Camry", "Fuel", LocalDate.now().minusDays(5), 65.25, "Full tank premium", "Yes"));
+        expenses.add(new Expense(2, "Honda Civic", "Maintenance", LocalDate.now().minusDays(20), 320.50, "Brake service", "Yes"));
+        expenses.add(new Expense(3, "Ford F-150", "Insurance", LocalDate.now().minusDays(15), 850.00, "6-month premium", "No"));
+        expenses.add(new Expense(4, "Tesla Model 3", "Charging", LocalDate.now().minusDays(3), 18.75, "Supercharger", "No"));
+        expenses.add(new Expense(5, "BMW X5", "Repair", LocalDate.now().minusDays(60), 1200.00, "Engine issue", "Yes"));
+        
+        refreshVehicleTable();
+        refreshMaintenanceTable();
+        refreshExpenseTable();
+    }
+    
+    private void refreshVehicleTable() {
+        vehicleTableModel.setRowCount(0);
+        for (Vehicle v : vehicles) {
+            vehicleTableModel.addRow(new Object[]{
+                v.id, v.make, v.model, v.year, v.licensePlate, 
+                v.vin, v.mileage, v.status
+            });
+        }
+    }
+    
+    private void refreshMaintenanceTable() {
+        maintenanceTableModel.setRowCount(0);
+        for (MaintenanceRecord mr : maintenanceRecords) {
+            maintenanceTableModel.addRow(new Object[]{
+                mr.id, mr.vehicle, mr.serviceType, mr.date.format(dateFormatter),
+                mr.nextDue.format(dateFormatter), String.format("$%.2f", mr.cost),
+                mr.status, mr.notes
+            });
+        }
+    }
+    
+    private void refreshExpenseTable() {
+        expenseTableModel.setRowCount(0);
+        for (Expense exp : expenses) {
+            expenseTableModel.addRow(new Object[]{
+                exp.id, exp.vehicle, exp.category, exp.date.format(dateFormatter),
+                String.format("$%.2f", exp.amount), exp.description, exp.receipt
+            });
+        }
+    }
+    
+    private void updateDashboard() {
+        int totalVehicles = vehicles.size();
+        int pendingMaintenance = (int) maintenanceRecords.stream()
+                .filter(mr -> "Pending".equals(mr.status))
+                .count();
+        
+        double monthlyExpenses = expenses.stream()
+                .filter(e -> e.date.isAfter(LocalDate.now().minusDays(30)))
+                .mapToDouble(e -> e.amount)
+                .sum();
+        
+        int overdueServices = (int) maintenanceRecords.stream()
+                .filter(mr -> "Overdue".equals(mr.status))
+                .count();
+        
+        int upcomingServices = (int) maintenanceRecords.stream()
+                .filter(mr -> mr.nextDue.isBefore(LocalDate.now().plusDays(7)) 
+                        && mr.nextDue.isAfter(LocalDate.now()))
+                .count();
+        
+        StringBuilder sb = new StringBuilder();
+        sb.append("=== VEHICLE MAINTENANCE SYSTEM DASHBOARD ===\n");
+        sb.append("Last Updated: ").append(LocalDate.now()).append("\n\n");
+        sb.append("SUMMARY:\n");
+        sb.append(String.format("  * Total Vehicles: %d\n", totalVehicles));
+        sb.append(String.format("  * Active Vehicles: %d\n", 
+                vehicles.stream().filter(v -> "Active".equals(v.status)).count()));
+        sb.append(String.format("  * Pending Maintenance: %d\n", pendingMaintenance));
+        sb.append(String.format("  * Overdue Services: %d\n", overdueServices));
+        sb.append(String.format("  * Upcoming Services (7 days): %d\n", upcomingServices));
+        sb.append(String.format("  * Monthly Expenses: $%.2f\n\n", monthlyExpenses));
+        
+        sb.append("RECENT ACTIVITY:\n");
+        maintenanceRecords.stream()
+                .sorted((a, b) -> b.date.compareTo(a.date))
+                .limit(5)
+                .forEach(mr -> sb.append(String.format("  * %s: %s on %s ($%.2f)\n", 
+                        mr.vehicle, mr.serviceType, mr.date, mr.cost)));
+        
+        sb.append("\nALERTS:\n");
+        maintenanceRecords.stream()
+                .filter(mr -> "Overdue".equals(mr.status))
+                .forEach(mr -> sb.append(String.format("  ! OVERDUE: %s needs %s\n", 
+                        mr.vehicle, mr.serviceType)));
+        
+        dashboardText.setText(sb.toString());
+    }
+    
+    private void performSearch() {
+        String query = searchField.getText().toLowerCase();
+        String filter = (String) filterComboBox.getSelectedItem();
+        
+        if (query.isEmpty()) {
+            refreshVehicleTable();
+            refreshMaintenanceTable();
+            refreshExpenseTable();
+            return;
+        }
+        
+        // Filter vehicles
+        if ("All".equals(filter) || "Vehicles".equals(filter)) {
+            vehicleTableModel.setRowCount(0);
+            for (Vehicle v : vehicles) {
+                if (v.make.toLowerCase().contains(query) ||
+                    v.model.toLowerCase().contains(query) ||
+                    v.licensePlate.toLowerCase().contains(query) ||
+                    v.vin.toLowerCase().contains(query)) {
+                    vehicleTableModel.addRow(new Object[]{
+                        v.id, v.make, v.model, v.year, v.licensePlate, 
+                        v.vin, v.mileage, v.status
+                    });
+                }
+            }
+        }
+        
+        // Filter maintenance
+        if ("All".equals(filter) || "Maintenance".equals(filter)) {
+            maintenanceTableModel.setRowCount(0);
+            for (MaintenanceRecord mr : maintenanceRecords) {
+                if (mr.vehicle.toLowerCase().contains(query) ||
+                    mr.serviceType.toLowerCase().contains(query) ||
+                    mr.status.toLowerCase().contains(query) ||
+                    mr.notes.toLowerCase().contains(query)) {
+                    maintenanceTableModel.addRow(new Object[]{
+                        mr.id, mr.vehicle, mr.serviceType, mr.date.format(dateFormatter),
+                        mr.nextDue.format(dateFormatter), String.format("$%.2f", mr.cost),
+                        mr.status, mr.notes
+                    });
+                }
+            }
+        }
+        
+        // Filter expenses
+        if ("All".equals(filter) || "Expenses".equals(filter)) {
+            expenseTableModel.setRowCount(0);
+            for (Expense exp : expenses) {
+                if (exp.vehicle.toLowerCase().contains(query) ||
+                    exp.category.toLowerCase().contains(query) ||
+                    exp.description.toLowerCase().contains(query)) {
+                    expenseTableModel.addRow(new Object[]{
+                        exp.id, exp.vehicle, exp.category, exp.date.format(dateFormatter),
+                        String.format("$%.2f", exp.amount), exp.description, exp.receipt
+                    });
+                }
+            }
+        }
+    }
+    
+    // Dialog and action methods
+    private void showAddVehicleDialog() {
+        JDialog dialog = new JDialog(this, "Add New Vehicle", true);
+        dialog.setLayout(new BorderLayout());
+        dialog.setSize(500, 400);
+        dialog.setLocationRelativeTo(this);
+        
+        JPanel formPanel = new JPanel(new GridLayout(8, 2, 10, 10));
+        formPanel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
+        formPanel.setBackground(PANEL_BG);
+        
+        JTextField makeField = new JTextField();
+        JTextField modelField = new JTextField();
+        JTextField yearField = new JTextField();
+        JTextField licenseField = new JTextField();
+        JTextField vinField = new JTextField();
+        JTextField mileageField = new JTextField();
+        JComboBox<String> statusCombo = new JComboBox<>(new String[]{"Active", "Inactive", "Sold", "Under Repair"});
+        
+        formPanel.add(new JLabel("Make:"));
+        formPanel.add(makeField);
+        formPanel.add(new JLabel("Model:"));
+        formPanel.add(modelField);
+        formPanel.add(new JLabel("Year:"));
+        formPanel.add(yearField);
+        formPanel.add(new JLabel("License Plate:"));
+        formPanel.add(licenseField);
+        formPanel.add(new JLabel("VIN:"));
+        formPanel.add(vinField);
+        formPanel.add(new JLabel("Mileage:"));
+        formPanel.add(mileageField);
+        formPanel.add(new JLabel("Status:"));
+        formPanel.add(statusCombo);
+        
+        JButton saveButton = createStyledButton("Save Vehicle", PRIMARY_COLOR);
+        saveButton.addActionListener(e -> {
+            try {
+                int id = vehicles.size() + 1;
+                String make = makeField.getText();
+                String model = modelField.getText();
+                int year = Integer.parseInt(yearField.getText());
+                String license = licenseField.getText();
+                String vin = vinField.getText();
+                int mileage = Integer.parseInt(mileageField.getText());
+                String status = (String) statusCombo.getSelectedItem();
+                
+                if (make.isEmpty() || model.isEmpty() || license.isEmpty() || vin.isEmpty()) {
+                    JOptionPane.showMessageDialog(dialog, "Please fill in all required fields!");
+                    return;
+                }
+                
+                vehicles.add(new Vehicle(id, make, model, year, license, vin, mileage, status));
+                refreshVehicleTable();
+                updateDashboard();
+                JOptionPane.showMessageDialog(dialog, "Vehicle added successfully!");
+                dialog.dispose();
+            } catch (NumberFormatException ex) {
+                JOptionPane.showMessageDialog(dialog, "Please enter valid numbers for year and mileage!");
+            }
+        });
+        
+        JButton cancelButton = createStyledButton("Cancel", new Color(149, 165, 166));
+        cancelButton.addActionListener(e -> dialog.dispose());
+        
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 10));
+        buttonPanel.setBackground(BACKGROUND_COLOR);
+        buttonPanel.add(saveButton);
+        buttonPanel.add(cancelButton);
+        
+        dialog.add(formPanel, BorderLayout.CENTER);
+        dialog.add(buttonPanel, BorderLayout.SOUTH);
+        dialog.setVisible(true);
+    }
+    
+    private void editVehicle() {
+        int selectedRow = vehicleTable.getSelectedRow();
+        if (selectedRow == -1) {
+            JOptionPane.showMessageDialog(this, "Please select a vehicle to edit!");
+            return;
+        }
+        
+        int vehicleId = (int) vehicleTableModel.getValueAt(selectedRow, 0);
+        Vehicle vehicle = vehicles.stream()
+                .filter(v -> v.id == vehicleId)
+                .findFirst()
+                .orElse(null);
+        
+        if (vehicle == null) {
+            JOptionPane.showMessageDialog(this, "Vehicle not found!");
+            return;
+        }
+        
+        JDialog dialog = new JDialog(this, "Edit Vehicle", true);
+        dialog.setLayout(new BorderLayout());
+        dialog.setSize(500, 400);
+        dialog.setLocationRelativeTo(this);
+        
+        JPanel formPanel = new JPanel(new GridLayout(8, 2, 10, 10));
+        formPanel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
+        formPanel.setBackground(PANEL_BG);
+        
+        JTextField makeField = new JTextField(vehicle.make);
+        JTextField modelField = new JTextField(vehicle.model);
+        JTextField yearField = new JTextField(String.valueOf(vehicle.year));
+        JTextField licenseField = new JTextField(vehicle.licensePlate);
+        JTextField vinField = new JTextField(vehicle.vin);
+        JTextField mileageField = new JTextField(String.valueOf(vehicle.mileage));
+        JComboBox<String> statusCombo = new JComboBox<>(new String[]{"Active", "Inactive", "Sold", "Under Repair"});
+        statusCombo.setSelectedItem(vehicle.status);
+        
+        formPanel.add(new JLabel("Make:"));
+        formPanel.add(makeField);
+        formPanel.add(new JLabel("Model:"));
+        formPanel.add(modelField);
+        formPanel.add(new JLabel("Year:"));
+        formPanel.add(yearField);
+        formPanel.add(new JLabel("License Plate:"));
+        formPanel.add(licenseField);
+        formPanel.add(new JLabel("VIN:"));
+        formPanel.add(vinField);
+        formPanel.add(new JLabel("Mileage:"));
+        formPanel.add(mileageField);
+        formPanel.add(new JLabel("Status:"));
+        formPanel.add(statusCombo);
+        
+        JButton saveButton = createStyledButton("Save Changes", PRIMARY_COLOR);
+        saveButton.addActionListener(e -> {
+            try {
+                vehicle.make = makeField.getText();
+                vehicle.model = modelField.getText();
+                vehicle.year = Integer.parseInt(yearField.getText());
+                vehicle.licensePlate = licenseField.getText();
+                vehicle.vin = vinField.getText();
+                vehicle.mileage = Integer.parseInt(mileageField.getText());
+                vehicle.status = (String) statusCombo.getSelectedItem();
+                
+                refreshVehicleTable();
+                updateDashboard();
+                JOptionPane.showMessageDialog(dialog, "Vehicle updated successfully!");
+                dialog.dispose();
+            } catch (NumberFormatException ex) {
+                JOptionPane.showMessageDialog(dialog, "Please enter valid numbers for year and mileage!");
+            }
+        });
+        
+        JButton cancelButton = createStyledButton("Cancel", new Color(149, 165, 166));
+        cancelButton.addActionListener(e -> dialog.dispose());
+        
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 10));
+        buttonPanel.setBackground(BACKGROUND_COLOR);
+        buttonPanel.add(saveButton);
+        buttonPanel.add(cancelButton);
+        
+        dialog.add(formPanel, BorderLayout.CENTER);
+        dialog.add(buttonPanel, BorderLayout.SOUTH);
+        dialog.setVisible(true);
+    }
+    
+    private void deleteVehicle() {
+        int selectedRow = vehicleTable.getSelectedRow();
+        if (selectedRow == -1) {
+            JOptionPane.showMessageDialog(this, "Please select a vehicle to delete!");
+            return;
+        }
+        
+        int vehicleId = (int) vehicleTableModel.getValueAt(selectedRow, 0);
+        String vehicleName = vehicleTableModel.getValueAt(selectedRow, 1) + " " + 
+                            vehicleTableModel.getValueAt(selectedRow, 2);
+        
+        int confirm = JOptionPane.showConfirmDialog(this, 
+            "Are you sure you want to delete " + vehicleName + "?\nThis will also delete related maintenance and expense records.",
+            "Confirm Delete", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+        
+        if (confirm == JOptionPane.YES_OPTION) {
+            // Remove vehicle
+            vehicles.removeIf(v -> v.id == vehicleId);
+            
+            // Remove related maintenance records
+            maintenanceRecords.removeIf(mr -> mr.vehicle.contains(vehicleName));
+            
+            // Remove related expenses
+            expenses.removeIf(exp -> exp.vehicle.contains(vehicleName));
+            
+            refreshVehicleTable();
+            refreshMaintenanceTable();
+            refreshExpenseTable();
+            updateDashboard();
+            JOptionPane.showMessageDialog(this, "Vehicle and related records deleted successfully!");
+        }
+    }
+    
+    private void viewVehicleDetails() {
+        int selectedRow = vehicleTable.getSelectedRow();
+        if (selectedRow == -1) {
+            JOptionPane.showMessageDialog(this, "Please select a vehicle to view details!");
+            return;
+        }
+        
+        int vehicleId = (int) vehicleTableModel.getValueAt(selectedRow, 0);
+        Vehicle vehicle = vehicles.stream()
+                .filter(v -> v.id == vehicleId)
+                .findFirst()
+                .orElse(null);
+        
+        if (vehicle == null) return;
+        
+        // Get maintenance history for this vehicle
+        List<MaintenanceRecord> vehicleMaintenance = new ArrayList<>();
+        for (MaintenanceRecord mr : maintenanceRecords) {
+            if (mr.vehicle.contains(vehicle.make) && mr.vehicle.contains(vehicle.model)) {
+                vehicleMaintenance.add(mr);
+            }
+        }
+        
+        // Get expenses for this vehicle
+        List<Expense> vehicleExpenses = new ArrayList<>();
+        for (Expense exp : expenses) {
+            if (exp.vehicle.contains(vehicle.make) && exp.vehicle.contains(vehicle.model)) {
+                vehicleExpenses.add(exp);
+            }
+        }
+        
+        StringBuilder details = new StringBuilder();
+        details.append("=== VEHICLE DETAILS ===\n\n");
+        details.append(String.format("Make: %s\n", vehicle.make));
+        details.append(String.format("Model: %s\n", vehicle.model));
+        details.append(String.format("Year: %d\n", vehicle.year));
+        details.append(String.format("License Plate: %s\n", vehicle.licensePlate));
+        details.append(String.format("VIN: %s\n", vehicle.vin));
+        details.append(String.format("Mileage: %d\n", vehicle.mileage));
+        details.append(String.format("Status: %s\n\n", vehicle.status));
+        
+        details.append("=== MAINTENANCE HISTORY ===\n");
+        if (vehicleMaintenance.isEmpty()) {
+            details.append("No maintenance records found.\n");
+        } else {
+            for (MaintenanceRecord mr : vehicleMaintenance) {
+                details.append(String.format("\nService: %s\n", mr.serviceType));
+                details.append(String.format("Date: %s | Next Due: %s\n", mr.date, mr.nextDue));
+                details.append(String.format("Cost: $%.2f | Status: %s\n", mr.cost, mr.status));
+                details.append(String.format("Notes: %s\n", mr.notes));
+            }
+        }
+        
+        details.append("\n=== EXPENSE SUMMARY ===\n");
+        if (vehicleExpenses.isEmpty()) {
+            details.append("No expense records found.\n");
+        } else {
+            double totalExpenses = vehicleExpenses.stream().mapToDouble(e -> e.amount).sum();
+            details.append(String.format("Total Expenses: $%.2f\n", totalExpenses));
+            details.append(String.format("Number of Records: %d\n", vehicleExpenses.size()));
+        }
+        
+        JTextArea textArea = new JTextArea(details.toString());
+        textArea.setEditable(false);
+        textArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
+        
+        JScrollPane scrollPane = new JScrollPane(textArea);
+        scrollPane.setPreferredSize(new Dimension(500, 400));
+        
+        JOptionPane.showMessageDialog(this, scrollPane, "Vehicle Details", JOptionPane.INFORMATION_MESSAGE);
+    }
+    
+    private void showAddMaintenanceDialog() {
+        JDialog dialog = new JDialog(this, "Add Maintenance Record", true);
+        dialog.setLayout(new BorderLayout());
+        dialog.setSize(500, 500);
+        dialog.setLocationRelativeTo(this);
+        
+        JPanel formPanel = new JPanel(new GridLayout(9, 2, 10, 10));
+        formPanel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
+        formPanel.setBackground(PANEL_BG);
+        
+        // Vehicle selection
+        JComboBox<String> vehicleCombo = new JComboBox<>();
+        for (Vehicle v : vehicles) {
+            vehicleCombo.addItem(v.make + " " + v.model + " (" + v.licensePlate + ")");
+        }
+        
+        JTextField serviceTypeField = new JTextField();
+        JTextField dateField = new JTextField(LocalDate.now().toString());
+        JTextField nextDueField = new JTextField(LocalDate.now().plusDays(30).toString());
+        JTextField costField = new JTextField("0.00");
+        JComboBox<String> statusCombo = new JComboBox<>(new String[]{"Scheduled", "Pending", "Completed", "Overdue"});
+        JTextArea notesArea = new JTextArea(3, 20);
+        notesArea.setLineWrap(true);
+        JScrollPane notesScroll = new JScrollPane(notesArea);
+        
+        formPanel.add(new JLabel("Vehicle:"));
+        formPanel.add(vehicleCombo);
+        formPanel.add(new JLabel("Service Type:"));
+        formPanel.add(serviceTypeField);
+        formPanel.add(new JLabel("Date:"));
+        formPanel.add(dateField);
+        formPanel.add(new JLabel("Next Due:"));
+        formPanel.add(nextDueField);
+        formPanel.add(new JLabel("Cost:"));
+        formPanel.add(costField);
+        formPanel.add(new JLabel("Status:"));
+        formPanel.add(statusCombo);
+        formPanel.add(new JLabel("Notes:"));
+        formPanel.add(notesScroll);
+        
+        JButton saveButton = createStyledButton("Save Record", PRIMARY_COLOR);
+        saveButton.addActionListener(e -> {
+            try {
+                int id = maintenanceRecords.size() + 1;
+                String vehicle = (String) vehicleCombo.getSelectedItem();
+                String serviceType = serviceTypeField.getText();
+                LocalDate date = LocalDate.parse(dateField.getText());
+                LocalDate nextDue = LocalDate.parse(nextDueField.getText());
+                double cost = Double.parseDouble(costField.getText());
+                String status = (String) statusCombo.getSelectedItem();
+                String notes = notesArea.getText();
+                
+                if (serviceType.isEmpty()) {
+                    JOptionPane.showMessageDialog(dialog, "Please enter service type!");
+                    return;
+                }
+                
+                maintenanceRecords.add(new MaintenanceRecord(id, vehicle, serviceType, date, nextDue, cost, status, notes));
+                refreshMaintenanceTable();
+                updateDashboard();
+                JOptionPane.showMessageDialog(dialog, "Maintenance record added successfully!");
+                dialog.dispose();
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(dialog, "Please check date format (YYYY-MM-DD) and cost!");
+            }
+        });
+        
+        JButton cancelButton = createStyledButton("Cancel", new Color(149, 165, 166));
+        cancelButton.addActionListener(e -> dialog.dispose());
+        
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 10));
+        buttonPanel.setBackground(BACKGROUND_COLOR);
+        buttonPanel.add(saveButton);
+        buttonPanel.add(cancelButton);
+        
+        dialog.add(formPanel, BorderLayout.CENTER);
+        dialog.add(buttonPanel, BorderLayout.SOUTH);
+        dialog.setVisible(true);
+    }
+    
+    private void editMaintenanceRecord() {
+        int selectedRow = maintenanceTable.getSelectedRow();
+        if (selectedRow == -1) {
+            JOptionPane.showMessageDialog(this, "Please select a maintenance record to edit!");
+            return;
+        }
+        
+        int recordId = (int) maintenanceTableModel.getValueAt(selectedRow, 0);
+        MaintenanceRecord record = maintenanceRecords.stream()
+                .filter(mr -> mr.id == recordId)
+                .findFirst()
+                .orElse(null);
+        
+        if (record == null) {
+            JOptionPane.showMessageDialog(this, "Record not found!");
+            return;
+        }
+        
+        JDialog dialog = new JDialog(this, "Edit Maintenance Record", true);
+        dialog.setLayout(new BorderLayout());
+        dialog.setSize(500, 500);
+        dialog.setLocationRelativeTo(this);
+        
+        JPanel formPanel = new JPanel(new GridLayout(9, 2, 10, 10));
+        formPanel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
+        formPanel.setBackground(PANEL_BG);
+        
+        // Vehicle selection
+        JComboBox<String> vehicleCombo = new JComboBox<>();
+        for (Vehicle v : vehicles) {
+            vehicleCombo.addItem(v.make + " " + v.model + " (" + v.licensePlate + ")");
+        }
+        vehicleCombo.setSelectedItem(record.vehicle);
+        
+        JTextField serviceTypeField = new JTextField(record.serviceType);
+        JTextField dateField = new JTextField(record.date.toString());
+        JTextField nextDueField = new JTextField(record.nextDue.toString());
+        JTextField costField = new JTextField(String.valueOf(record.cost));
+        JComboBox<String> statusCombo = new JComboBox<>(new String[]{"Scheduled", "Pending", "Completed", "Overdue"});
+        statusCombo.setSelectedItem(record.status);
+        JTextArea notesArea = new JTextArea(record.notes, 3, 20);
+        notesArea.setLineWrap(true);
+        JScrollPane notesScroll = new JScrollPane(notesArea);
+        
+        formPanel.add(new JLabel("Vehicle:"));
+        formPanel.add(vehicleCombo);
+        formPanel.add(new JLabel("Service Type:"));
+        formPanel.add(serviceTypeField);
+        formPanel.add(new JLabel("Date:"));
+        formPanel.add(dateField);
+        formPanel.add(new JLabel("Next Due:"));
+        formPanel.add(nextDueField);
+        formPanel.add(new JLabel("Cost:"));
+        formPanel.add(costField);
+        formPanel.add(new JLabel("Status:"));
+        formPanel.add(statusCombo);
+        formPanel.add(new JLabel("Notes:"));
+        formPanel.add(notesScroll);
+        
+        JButton saveButton = createStyledButton("Save Changes", PRIMARY_COLOR);
+        saveButton.addActionListener(e -> {
+            try {
+                record.vehicle = (String) vehicleCombo.getSelectedItem();
+                record.serviceType = serviceTypeField.getText();
+                record.date = LocalDate.parse(dateField.getText());
+                record.nextDue = LocalDate.parse(nextDueField.getText());
+                record.cost = Double.parseDouble(costField.getText());
+                record.status = (String) statusCombo.getSelectedItem();
+                record.notes = notesArea.getText();
+                
+                refreshMaintenanceTable();
+                updateDashboard();
+                JOptionPane.showMessageDialog(dialog, "Maintenance record updated successfully!");
+                dialog.dispose();
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(dialog, "Please check date format (YYYY-MM-DD) and cost!");
+            }
+        });
+        
+        JButton cancelButton = createStyledButton("Cancel", new Color(149, 165, 166));
+        cancelButton.addActionListener(e -> dialog.dispose());
+        
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 10));
+        buttonPanel.setBackground(BACKGROUND_COLOR);
+        buttonPanel.add(saveButton);
+        buttonPanel.add(cancelButton);
+        
+        dialog.add(formPanel, BorderLayout.CENTER);
+        dialog.add(buttonPanel, BorderLayout.SOUTH);
+        dialog.setVisible(true);
+    }
+    
+    private void deleteMaintenanceRecord() {
+        int selectedRow = maintenanceTable.getSelectedRow();
+        if (selectedRow == -1) {
+            JOptionPane.showMessageDialog(this, "Please select a maintenance record to delete!");
+            return;
+        }
+        
+        int recordId = (int) maintenanceTableModel.getValueAt(selectedRow, 0);
+        String serviceType = (String) maintenanceTableModel.getValueAt(selectedRow, 2);
+        
+        int confirm = JOptionPane.showConfirmDialog(this, 
+            "Are you sure you want to delete the maintenance record for: " + serviceType + "?",
+            "Confirm Delete", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+        
+        if (confirm == JOptionPane.YES_OPTION) {
+            maintenanceRecords.removeIf(mr -> mr.id == recordId);
+            refreshMaintenanceTable();
+            updateDashboard();
+            JOptionPane.showMessageDialog(this, "Maintenance record deleted successfully!");
+        }
+    }
+    
+    private void markMaintenanceComplete() {
+        int selectedRow = maintenanceTable.getSelectedRow();
+        if (selectedRow == -1) {
+            JOptionPane.showMessageDialog(this, "Please select a maintenance record to mark as complete!");
+            return;
+        }
+        
+        int recordId = (int) maintenanceTableModel.getValueAt(selectedRow, 0);
+        MaintenanceRecord record = maintenanceRecords.stream()
+                .filter(mr -> mr.id == recordId)
+                .findFirst()
+                .orElse(null);
+        
+        if (record == null) {
+            JOptionPane.showMessageDialog(this, "Record not found!");
+            return;
+        }
+        
+        record.status = "Completed";
+        record.date = LocalDate.now();
+        refreshMaintenanceTable();
+        updateDashboard();
+        JOptionPane.showMessageDialog(this, "Maintenance marked as complete!");
+    }
+    
+    private void showScheduleMaintenanceDialog() {
+        JDialog dialog = new JDialog(this, "Schedule Maintenance", true);
+        dialog.setLayout(new BorderLayout());
+        dialog.setSize(400, 300);
+        dialog.setLocationRelativeTo(this);
+        
+        JPanel formPanel = new JPanel(new GridLayout(5, 2, 10, 10));
+        formPanel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
+        formPanel.setBackground(PANEL_BG);
+        
+        // Vehicle selection
+        JComboBox<String> vehicleCombo = new JComboBox<>();
+        for (Vehicle v : vehicles) {
+            vehicleCombo.addItem(v.make + " " + v.model);
+        }
+        
+        JTextField serviceTypeField = new JTextField();
+        JTextField scheduledDateField = new JTextField(LocalDate.now().plusDays(7).toString());
+        JTextField notesField = new JTextField();
+        
+        formPanel.add(new JLabel("Vehicle:"));
+        formPanel.add(vehicleCombo);
+        formPanel.add(new JLabel("Service Type:"));
+        formPanel.add(serviceTypeField);
+        formPanel.add(new JLabel("Scheduled Date:"));
+        formPanel.add(scheduledDateField);
+        formPanel.add(new JLabel("Notes:"));
+        formPanel.add(notesField);
+        
+        JButton scheduleButton = createStyledButton("Schedule", PRIMARY_COLOR);
+        scheduleButton.addActionListener(e -> {
+            try {
+                int id = maintenanceRecords.size() + 1;
+                String vehicle = (String) vehicleCombo.getSelectedItem();
+                String serviceType = serviceTypeField.getText();
+                LocalDate scheduledDate = LocalDate.parse(scheduledDateField.getText());
+                
+                if (serviceType.isEmpty()) {
+                    JOptionPane.showMessageDialog(dialog, "Please enter service type!");
+                    return;
+                }
+                
+                maintenanceRecords.add(new MaintenanceRecord(
+                    id, vehicle, serviceType, 
+                    LocalDate.now(), scheduledDate, 
+                    0.00, "Scheduled", notesField.getText()
+                ));
+                
+                refreshMaintenanceTable();
+                updateDashboard();
+                JOptionPane.showMessageDialog(dialog, "Maintenance scheduled successfully!");
+                dialog.dispose();
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(dialog, "Please check date format (YYYY-MM-DD)!");
+            }
+        });
+        
+        JButton cancelButton = createStyledButton("Cancel", new Color(149, 165, 166));
+        cancelButton.addActionListener(e -> dialog.dispose());
+        
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 10));
+        buttonPanel.setBackground(BACKGROUND_COLOR);
+        buttonPanel.add(scheduleButton);
+        buttonPanel.add(cancelButton);
+        
+        dialog.add(formPanel, BorderLayout.CENTER);
+        dialog.add(buttonPanel, BorderLayout.SOUTH);
+        dialog.setVisible(true);
+    }
+    
+    private void showAddExpenseDialog() {
+        JDialog dialog = new JDialog(this, "Add Expense", true);
+        dialog.setLayout(new BorderLayout());
+        dialog.setSize(500, 400);
+        dialog.setLocationRelativeTo(this);
+        
+        JPanel formPanel = new JPanel(new GridLayout(7, 2, 10, 10));
+        formPanel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
+        formPanel.setBackground(PANEL_BG);
+        
+        // Vehicle selection
+        JComboBox<String> vehicleCombo = new JComboBox<>();
+        for (Vehicle v : vehicles) {
+            vehicleCombo.addItem(v.make + " " + v.model);
+        }
+        
+        JComboBox<String> categoryCombo = new JComboBox<>(new String[]{
+            "Fuel", "Maintenance", "Insurance", "Repair", "Parking", 
+            "Tolls", "Registration", "Other"
+        });
+        
+        JTextField dateField = new JTextField(LocalDate.now().toString());
+        JTextField amountField = new JTextField("0.00");
+        JTextField descriptionField = new JTextField();
+        JComboBox<String> receiptCombo = new JComboBox<>(new String[]{"Yes", "No"});
+        
+        formPanel.add(new JLabel("Vehicle:"));
+        formPanel.add(vehicleCombo);
+        formPanel.add(new JLabel("Category:"));
+        formPanel.add(categoryCombo);
+        formPanel.add(new JLabel("Date:"));
+        formPanel.add(dateField);
+        formPanel.add(new JLabel("Amount:"));
+        formPanel.add(amountField);
+        formPanel.add(new JLabel("Description:"));
+        formPanel.add(descriptionField);
+        formPanel.add(new JLabel("Receipt Available:"));
+        formPanel.add(receiptCombo);
+        
+        JButton saveButton = createStyledButton("Save Expense", PRIMARY_COLOR);
+        saveButton.addActionListener(e -> {
+            try {
+                int id = expenses.size() + 1;
+                String vehicle = (String) vehicleCombo.getSelectedItem();
+                String category = (String) categoryCombo.getSelectedItem();
+                LocalDate date = LocalDate.parse(dateField.getText());
+                double amount = Double.parseDouble(amountField.getText());
+                String description = descriptionField.getText();
+                String receipt = (String) receiptCombo.getSelectedItem();
+                
+                if (description.isEmpty()) {
+                    JOptionPane.showMessageDialog(dialog, "Please enter description!");
+                    return;
+                }
+                
+                expenses.add(new Expense(id, vehicle, category, date, amount, description, receipt));
+                refreshExpenseTable();
+                updateDashboard();
+                JOptionPane.showMessageDialog(dialog, "Expense added successfully!");
+                dialog.dispose();
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(dialog, "Please check date format (YYYY-MM-DD) and amount!");
+            }
+        });
+        
+        JButton cancelButton = createStyledButton("Cancel", new Color(149, 165, 166));
+        cancelButton.addActionListener(e -> dialog.dispose());
+        
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 10));
+        buttonPanel.setBackground(BACKGROUND_COLOR);
+        buttonPanel.add(saveButton);
+        buttonPanel.add(cancelButton);
+        
+        dialog.add(formPanel, BorderLayout.CENTER);
+        dialog.add(buttonPanel, BorderLayout.SOUTH);
+        dialog.setVisible(true);
+    }
+    
+    private void editExpense() {
+        int selectedRow = expenseTable.getSelectedRow();
+        if (selectedRow == -1) {
+            JOptionPane.showMessageDialog(this, "Please select an expense to edit!");
+            return;
+        }
+        
+        int expenseId = (int) expenseTableModel.getValueAt(selectedRow, 0);
+        Expense expense = expenses.stream()
+                .filter(exp -> exp.id == expenseId)
+                .findFirst()
+                .orElse(null);
+        
+        if (expense == null) {
+            JOptionPane.showMessageDialog(this, "Expense not found!");
+            return;
+        }
+        
+        JDialog dialog = new JDialog(this, "Edit Expense", true);
+        dialog.setLayout(new BorderLayout());
+        dialog.setSize(500, 400);
+        dialog.setLocationRelativeTo(this);
+        
+        JPanel formPanel = new JPanel(new GridLayout(7, 2, 10, 10));
+        formPanel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
+        formPanel.setBackground(PANEL_BG);
+        
+        // Vehicle selection
+        JComboBox<String> vehicleCombo = new JComboBox<>();
+        for (Vehicle v : vehicles) {
+            vehicleCombo.addItem(v.make + " " + v.model);
+        }
+        vehicleCombo.setSelectedItem(expense.vehicle);
+        
+        JComboBox<String> categoryCombo = new JComboBox<>(new String[]{
+            "Fuel", "Maintenance", "Insurance", "Repair", "Parking", 
+            "Tolls", "Registration", "Other"
+        });
+        categoryCombo.setSelectedItem(expense.category);
+        
+        JTextField dateField = new JTextField(expense.date.toString());
+        JTextField amountField = new JTextField(String.valueOf(expense.amount));
+        JTextField descriptionField = new JTextField(expense.description);
+        JComboBox<String> receiptCombo = new JComboBox<>(new String[]{"Yes", "No"});
+        receiptCombo.setSelectedItem(expense.receipt);
+        
+        formPanel.add(new JLabel("Vehicle:"));
+        formPanel.add(vehicleCombo);
+        formPanel.add(new JLabel("Category:"));
+        formPanel.add(categoryCombo);
+        formPanel.add(new JLabel("Date:"));
+        formPanel.add(dateField);
+        formPanel.add(new JLabel("Amount:"));
+        formPanel.add(amountField);
+        formPanel.add(new JLabel("Description:"));
+        formPanel.add(descriptionField);
+        formPanel.add(new JLabel("Receipt Available:"));
+        formPanel.add(receiptCombo);
+        
+        JButton saveButton = createStyledButton("Save Changes", PRIMARY_COLOR);
+        saveButton.addActionListener(e -> {
+            try {
+                expense.vehicle = (String) vehicleCombo.getSelectedItem();
+                expense.category = (String) categoryCombo.getSelectedItem();
+                expense.date = LocalDate.parse(dateField.getText());
+                expense.amount = Double.parseDouble(amountField.getText());
+                expense.description = descriptionField.getText();
+                expense.receipt = (String) receiptCombo.getSelectedItem();
+                
+                refreshExpenseTable();
+                updateDashboard();
+                JOptionPane.showMessageDialog(dialog, "Expense updated successfully!");
+                dialog.dispose();
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(dialog, "Please check date format (YYYY-MM-DD) and amount!");
+            }
+        });
+        
+        JButton cancelButton = createStyledButton("Cancel", new Color(149, 165, 166));
+        cancelButton.addActionListener(e -> dialog.dispose());
+        
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 10));
+        buttonPanel.setBackground(BACKGROUND_COLOR);
+        buttonPanel.add(saveButton);
+        buttonPanel.add(cancelButton);
+        
+        dialog.add(formPanel, BorderLayout.CENTER);
+        dialog.add(buttonPanel, BorderLayout.SOUTH);
+        dialog.setVisible(true);
+    }
+    
+    private void deleteExpense() {
+        int selectedRow = expenseTable.getSelectedRow();
+        if (selectedRow == -1) {
+            JOptionPane.showMessageDialog(this, "Please select an expense to delete!");
+            return;
+        }
+        
+        int expenseId = (int) expenseTableModel.getValueAt(selectedRow, 0);
+        String description = (String) expenseTableModel.getValueAt(selectedRow, 5);
+        
+        int confirm = JOptionPane.showConfirmDialog(this, 
+            "Are you sure you want to delete the expense: " + description + "?",
+            "Confirm Delete", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+        
+        if (confirm == JOptionPane.YES_OPTION) {
+            expenses.removeIf(exp -> exp.id == expenseId);
+            refreshExpenseTable();
+            updateDashboard();
+            JOptionPane.showMessageDialog(this, "Expense deleted successfully!");
+        }
+    }
+    
+    private void showExpenseChart() {
+        // Simple expense chart using a dialog with data
+        Map<String, Double> categoryTotals = new HashMap<>();
+        for (Expense exp : expenses) {
+            categoryTotals.put(exp.category, 
+                categoryTotals.getOrDefault(exp.category, 0.0) + exp.amount);
+        }
+        
+        StringBuilder chart = new StringBuilder();
+        chart.append("=== EXPENSE ANALYSIS CHART ===\n\n");
+        chart.append("Category-wise Expenses:\n");
+        chart.append("------------------------\n");
+        
+        for (Map.Entry<String, Double> entry : categoryTotals.entrySet()) {
+            chart.append(String.format("%-15s: $%.2f\n", entry.getKey(), entry.getValue()));
+        }
+        
+        double totalExpenses = expenses.stream().mapToDouble(e -> e.amount).sum();
+        chart.append("\nTotal Expenses: $").append(String.format("%.2f", totalExpenses)).append("\n");
+        
+        JTextArea chartArea = new JTextArea(chart.toString());
+        chartArea.setEditable(false);
+        chartArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
+        
+        JScrollPane scrollPane = new JScrollPane(chartArea);
+        scrollPane.setPreferredSize(new Dimension(400, 300));
+        
+        JOptionPane.showMessageDialog(this, scrollPane, "Expense Analysis Chart", JOptionPane.INFORMATION_MESSAGE);
+    }
+    
+    private void exportExpenses() {
+        JFileChooser fileChooser = new JFileChooser();
+        fileChooser.setDialogTitle("Export Expenses");
+        fileChooser.setSelectedFile(new java.io.File("expenses_export.csv"));
+        
+        if (fileChooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
+            java.io.File file = fileChooser.getSelectedFile();
+            try (java.io.PrintWriter writer = new java.io.PrintWriter(file)) {
+                // Write header
+                writer.println("ID,Vehicle,Category,Date,Amount,Description,Receipt");
+                
+                // Write data
+                for (Expense exp : expenses) {
+                    writer.println(String.format("%d,%s,%s,%s,%.2f,%s,%s",
+                        exp.id, exp.vehicle, exp.category, exp.date,
+                        exp.amount, exp.description, exp.receipt));
+                }
+                
+                JOptionPane.showMessageDialog(this, 
+                    "Expenses exported successfully to:\n" + file.getAbsolutePath());
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(this, 
+                    "Error exporting expenses: " + ex.getMessage(), 
+                    "Export Error", JOptionPane.ERROR_MESSAGE);
+            }
+        }
+    }
+    
+    private void generateReport() {
+        tabbedPane.setSelectedIndex(4); // Switch to Reports tab
+    }
+    
+    private String generateReportContent(String type, String fromDate, String toDate) {
+        StringBuilder report = new StringBuilder();
+        report.append("=== VEHICLE MAINTENANCE SYSTEM REPORT ===\n\n");
+        report.append("Report Type: ").append(type.toUpperCase()).append("\n");
+        report.append("Period: ").append(fromDate).append(" to ").append(toDate).append("\n");
+        report.append("Generated: ").append(LocalDate.now()).append("\n\n");
+        
+        switch (type) {
+            case "maintenance":
+                report.append("MAINTENANCE HISTORY REPORT\n");
+                report.append("===========================\n\n");
+                for (MaintenanceRecord mr : maintenanceRecords) {
+                    if ((mr.date.isAfter(LocalDate.parse(fromDate)) || mr.date.isEqual(LocalDate.parse(fromDate))) &&
+                        (mr.date.isBefore(LocalDate.parse(toDate)) || mr.date.isEqual(LocalDate.parse(toDate)))) {
+                        report.append(String.format("Vehicle: %s\n", mr.vehicle));
+                        report.append(String.format("Service: %s | Date: %s\n", mr.serviceType, mr.date));
+                        report.append(String.format("Cost: $%.2f | Status: %s\n", mr.cost, mr.status));
+                        report.append(String.format("Notes: %s\n\n", mr.notes));
+                    }
+                }
+                break;
+                
+            case "expense":
+                report.append("EXPENSE ANALYSIS REPORT\n");
+                report.append("=======================\n\n");
+                double totalExpenses = 0;
+                Map<String, Double> categoryTotals = new HashMap<>();
+                
+                for (Expense exp : expenses) {
+                    if ((exp.date.isAfter(LocalDate.parse(fromDate)) || exp.date.isEqual(LocalDate.parse(fromDate))) &&
+                        (exp.date.isBefore(LocalDate.parse(toDate)) || exp.date.isEqual(LocalDate.parse(toDate)))) {
+                        totalExpenses += exp.amount;
+                        categoryTotals.put(exp.category, 
+                            categoryTotals.getOrDefault(exp.category, 0.0) + exp.amount);
+                    }
+                }
+                
+                report.append("Category-wise Breakdown:\n");
+                for (Map.Entry<String, Double> entry : categoryTotals.entrySet()) {
+                    double percentage = (entry.getValue() / totalExpenses) * 100;
+                    report.append(String.format("%-15s: $%.2f (%.1f%%)\n", 
+                        entry.getKey(), entry.getValue(), percentage));
+                }
+                report.append(String.format("\nTotal Expenses: $%.2f\n", totalExpenses));
+                break;
+                
+            case "vehicle":
+                report.append("VEHICLE STATUS REPORT\n");
+                report.append("=====================\n\n");
+                for (Vehicle v : vehicles) {
+                    report.append(String.format("Vehicle: %s %s (%d)\n", v.make, v.model, v.year));
+                    report.append(String.format("License: %s | VIN: %s\n", v.licensePlate, v.vin));
+                    report.append(String.format("Mileage: %d | Status: %s\n\n", v.mileage, v.status));
+                }
+                break;
+                
+            default:
+                report.append("CUSTOM REPORT\n");
+                report.append("=============\n\n");
+                report.append("Summary Statistics:\n");
+                report.append(String.format("Total Vehicles: %d\n", vehicles.size()));
+                report.append(String.format("Active Vehicles: %d\n", 
+                    vehicles.stream().filter(v -> "Active".equals(v.status)).count()));
+                report.append(String.format("Total Maintenance Records: %d\n", maintenanceRecords.size()));
+                report.append(String.format("Total Expenses: $%.2f\n", 
+                    expenses.stream().mapToDouble(e -> e.amount).sum()));
+                break;
+        }
+        
+        return report.toString();
+    }
+    
+    public static void main(String[] args) {
+        // Set look and feel for better appearance
+        try {
+            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        
+        // Run the application
+        SwingUtilities.invokeLater(() -> {
+            new VehicleMaintenanceSystem();
+        });
+    }
+}
